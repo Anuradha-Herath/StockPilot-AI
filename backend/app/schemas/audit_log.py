@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 from pydantic import BaseModel, ConfigDict
 from app.db.models.audit_log import ActorType
 
@@ -11,8 +11,8 @@ class AuditLogResponse(BaseModel):
     action: str
     entity_type: str
     entity_id: Optional[str] = None
-    payload_before: Optional[dict[str, Any]] = None
-    payload_after: Optional[dict[str, Any]] = None
+    payload_before: Optional[Dict[str, Any]] = None
+    payload_after: Optional[Dict[str, Any]] = None
     description: Optional[str] = None
     ip_address: Optional[str] = None
     timestamp: datetime
