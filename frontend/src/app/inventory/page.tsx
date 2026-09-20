@@ -68,9 +68,18 @@ export default function InventoryPage() {
       selectedCategory === "ALL" ||
       (p.category || "").toUpperCase() === selectedCategory.toUpperCase();
 
+    const status =
+      p.inventory?.stock_status ||
+      (p.inventory
+        ? p.inventory.current_stock === 0
+          ? "OUT_OF_STOCK"
+          : p.inventory.current_stock <= p.inventory.reorder_point
+          ? "LOW_STOCK"
+          : "HEALTHY"
+        : "UNKNOWN");
+
     const matchesStatus =
-      selectedStatus === "ALL" ||
-      (p.inventory && p.inventory.stock_status === selectedStatus);
+      selectedStatus === "ALL" || status === selectedStatus;
 
     return matchesSearch && matchesCategory && matchesStatus;
   });
@@ -255,6 +264,16 @@ export default function InventoryPage() {
                       )
                     : 0;
 
+                  const status =
+                    inv?.stock_status ||
+                    (inv
+                      ? inv.current_stock === 0
+                        ? "OUT_OF_STOCK"
+                        : inv.current_stock <= inv.reorder_point
+                        ? "LOW_STOCK"
+                        : "HEALTHY"
+                      : "UNKNOWN");
+
                   return (
                     <tr key={p.id} className="hover:bg-slate-800/40 transition">
                       <td className="py-3.5 px-4">
@@ -268,9 +287,9 @@ export default function InventoryPage() {
                         <div className="flex items-center justify-between text-[11px] mb-1">
                           <span
                             className={`font-bold ${
-                              inv?.stock_status === "OUT_OF_STOCK"
+                              status === "OUT_OF_STOCK"
                                 ? "text-rose-400"
-                                : inv?.stock_status === "LOW_STOCK"
+                                : status === "LOW_STOCK"
                                 ? "text-amber-400"
                                 : "text-emerald-400"
                             }`}
@@ -284,9 +303,9 @@ export default function InventoryPage() {
                         <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full ${
-                              inv?.stock_status === "OUT_OF_STOCK"
+                              status === "OUT_OF_STOCK"
                                 ? "bg-rose-500"
-                                : inv?.stock_status === "LOW_STOCK"
+                                : status === "LOW_STOCK"
                                 ? "bg-amber-500"
                                 : "bg-emerald-500"
                             }`}
@@ -308,7 +327,7 @@ export default function InventoryPage() {
                       </td>
                       <td className="py-3.5 px-4">
                         {inv ? (
-                          <StatusBadge status={inv.stock_status} />
+                          <StatusBadge status={status} />
                         ) : (
                           <span className="text-slate-500">Unassigned</span>
                         )}

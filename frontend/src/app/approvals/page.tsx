@@ -5,6 +5,8 @@ import {
   AlertCircle,
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock,
   ExternalLink,
   FileCheck,
@@ -36,6 +38,23 @@ export default function ApprovalsPage() {
   const [activeTab, setActiveTab] = useState<"pending" | "orders">("pending");
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalSummary[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  // Status tab filter state for Purchase Orders
+  const [orderStatusFilter, setOrderStatusFilter] = useState<"ALL" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED">("ALL");
+  const [expandedOrderIds, setExpandedOrderIds] = useState<number[]>([]);
+
+  const toggleOrderExpand = (orderId: number) => {
+    setExpandedOrderIds((prev) =>
+      prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId]
+    );
+  };
+
+  const filteredOrders = purchaseOrders.filter((po) => {
+    if (orderStatusFilter === "ALL") return true;
+    if (orderStatusFilter === "PENDING_APPROVAL") return po.status === "PENDING_APPROVAL" || po.status === "DRAFT";
+    if (orderStatusFilter === "APPROVED") return po.status === "APPROVED" || po.status === "ISSUED" || po.status === "FULFILLED" || po.status === "PARTIALLY_RECEIVED";
+    if (orderStatusFilter === "REJECTED") return po.status === "REJECTED" || po.status === "CANCELLED";
+    return true;
+  });
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -106,7 +125,11 @@ export default function ApprovalsPage() {
       setApproveModalOpen(false);
       await fetchApprovalData();
     } catch (err: any) {
-      const msg = err.response?.data?.error?.message || "Failed to approve proposal";
+      const msg =
+        err.response?.data?.error?.message ||
+        err.response?.data?.message ||
+        err.message ||
+        "Failed to approve proposal";
       alert(`Approval Failed: ${msg}`);
     } finally {
       setActionLoading(false);
@@ -130,7 +153,11 @@ export default function ApprovalsPage() {
       setRejectModalOpen(false);
       await fetchApprovalData();
     } catch (err: any) {
-      const msg = err.response?.data?.error?.message || "Failed to reject proposal";
+      const msg =
+        err.response?.data?.error?.message ||
+        err.response?.data?.message ||
+        err.message ||
+        "Failed to reject proposal";
       alert(`Rejection Failed: ${msg}`);
     } finally {
       setActionLoading(false);
@@ -397,13 +424,40 @@ export default function ApprovalsPage() {
 
       {/* Tab 2: Issued Purchase Orders */}
       {activeTab === "orders" && (
-        <>
+        <div className="space-y-4">
+          {/* Status Sub-Tabs */}
+          <div className="flex flex-wrap items-center gap-2 bg-slate-950/60 p-1.5 rounded-xl border border-slate-800">
+            <span className="text-xs font-semibold text-slate-400 px-3">Filter Status:</span>
+            {[
+              { key: "ALL", label: "All" },
+              { key: "PENDING_APPROVAL", label: "Pending Approval" },
+              { key: "APPROVED", label: "Approved" },
+              { key: "REJECTED", label: "Rejected" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setOrderStatusFilter(tab.key as any)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  orderStatusFilter === tab.key
+                    ? "bg-slate-800 text-slate-100 shadow border border-slate-700"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
           {loading ? (
             <LoadingSpinner message="Loading purchase order ledger..." />
-          ) : purchaseOrders.length === 0 ? (
+          ) : filteredOrders.length === 0 ? (
             <EmptyState
-              title="No Purchase Orders Issued Yet"
-              description="When pending proposals are approved, converted purchase orders will appear here."
+              title="No Purchase Orders Found"
+              description={
+                orderStatusFilter === "ALL"
+                  ? "When pending proposals are approved, converted purchase orders will appear here."
+                  : `No purchase orders matching status category "${orderStatusFilter}".`
+              }
               icon={FileCheck}
             />
           ) : (
@@ -412,49 +466,131 @@ export default function ApprovalsPage() {
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 font-semibold uppercase">
+                      <th className="py-3 px-4 w-10"></th>
                       <th className="py-3 px-4">PO Number</th>
                       <th className="py-3 px-4">Supplier</th>
-                      <th className="py-3 px-4">Items Breakdown</th>
+                      <th className="py-3 px-4">Line Items Count</th>
                       <th className="py-3 px-4">Total Amount</th>
                       <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4">Approved Date</th>
+                      <th className="py-3 px-4">Timestamps (Created / Approved)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {purchaseOrders.map((po) => (
-                      <tr key={po.id} className="hover:bg-slate-800/40 transition">
-                        <td className="py-3.5 px-4 font-mono font-bold text-blue-400">
-                          {po.order_number}
-                        </td>
-                        <td className="py-3.5 px-4 font-medium text-slate-200">
-                          {po.supplier_name || `Supplier ID ${po.supplier_id}`}
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-300">
-                          {po.items.map((it) => (
-                            <div key={it.id} className="text-[11px]">
-                              {it.quantity}x {it.product_name || `SKU ${it.product_id}`}
-                            </div>
-                          ))}
-                        </td>
-                        <td className="py-3.5 px-4 font-semibold text-slate-100">
-                          {formatCurrency(po.total_amount)}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <StatusBadge status={po.status} type="order" />
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-400">
-                          {po.approved_at
-                            ? new Date(po.approved_at).toLocaleString()
-                            : new Date(po.created_at).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredOrders.map((po) => {
+                      const isExpanded = expandedOrderIds.includes(po.id);
+                      return (
+                        <React.Fragment key={po.id}>
+                          <tr
+                            onClick={() => toggleOrderExpand(po.id)}
+                            className="hover:bg-slate-800/40 cursor-pointer transition select-none"
+                          >
+                            <td className="py-3.5 px-4 text-slate-400">
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-blue-400" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4" />
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 font-mono font-bold text-blue-400">
+                              {po.order_number}
+                            </td>
+                            <td className="py-3.5 px-4 font-medium text-slate-200">
+                              {po.supplier_name || `Supplier ID ${po.supplier_id}`}
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-300">
+                              {po.items.length} item{po.items.length !== 1 ? "s" : ""}
+                            </td>
+                            <td className="py-3.5 px-4 font-semibold text-slate-100">
+                              {formatCurrency(po.total_amount)}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <StatusBadge status={po.status} type="order" />
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-400">
+                              <div className="space-y-0.5 text-[11px]">
+                                <div>
+                                  <span className="text-slate-500">Created:</span>{" "}
+                                  {new Date(po.created_at).toLocaleString()}
+                                </div>
+                                {po.approved_at && (
+                                  <div className="text-emerald-400/90">
+                                    <span className="text-slate-500">Approved:</span>{" "}
+                                    {new Date(po.approved_at).toLocaleString()}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Line Items Breakdown Expanded Row */}
+                          {isExpanded && (
+                            <tr className="bg-slate-950/80">
+                              <td colSpan={7} className="p-4 border-b border-slate-800">
+                                <div className="space-y-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
+                                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                                    <h4 className="font-semibold text-slate-200 text-xs flex items-center space-x-2">
+                                      <span>Line Item Breakdown</span>
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                                        PO #{po.order_number}
+                                      </span>
+                                    </h4>
+                                    <span className="text-slate-400 text-[11px]">
+                                      Supplier: {po.supplier_name}
+                                    </span>
+                                  </div>
+
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-xs">
+                                      <thead>
+                                        <tr className="text-slate-400 font-semibold border-b border-slate-800 uppercase text-[10px]">
+                                          <th className="py-1.5 px-3">Product Name / SKU</th>
+                                          <th className="py-1.5 px-3">Quantity</th>
+                                          <th className="py-1.5 px-3">Unit Cost</th>
+                                          <th className="py-1.5 px-3">Received Qty</th>
+                                          <th className="py-1.5 px-3 text-right">Line Total</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-800/40 font-mono">
+                                        {po.items.map((it) => (
+                                          <tr key={it.id}>
+                                            <td className="py-2 px-3">
+                                              <span className="font-sans font-medium text-slate-200">
+                                                {it.product_name || `Product ID ${it.product_id}`}
+                                              </span>
+                                              {it.product_sku && (
+                                                <span className="text-[11px] text-slate-500 ml-2">
+                                                  ({it.product_sku})
+                                                </span>
+                                              )}
+                                            </td>
+                                            <td className="py-2 px-3 text-slate-300">{it.quantity}</td>
+                                            <td className="py-2 px-3 text-slate-300">
+                                              {formatCurrency(it.unit_cost)}
+                                            </td>
+                                            <td className="py-2 px-3 text-slate-400">
+                                              {it.received_quantity || 0}
+                                            </td>
+                                            <td className="py-2 px-3 text-right font-semibold text-slate-100">
+                                              {formatCurrency(it.line_total)}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Approve Confirmation Modal */}

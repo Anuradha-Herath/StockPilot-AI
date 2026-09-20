@@ -60,12 +60,17 @@ export default function DashboardPage() {
       }
 
       if (invRes.status === "fulfilled" && invRes.value.items) {
-        const lowItems = invRes.value.items.filter(
-          (p) =>
-            p.inventory &&
-            (p.inventory.stock_status === "LOW_STOCK" ||
-              p.inventory.stock_status === "OUT_OF_STOCK")
-        );
+        const lowItems = invRes.value.items.filter((p) => {
+          if (!p.inventory) return false;
+          const status =
+            p.inventory.stock_status ||
+            (p.inventory.current_stock === 0
+              ? "OUT_OF_STOCK"
+              : p.inventory.current_stock <= p.inventory.reorder_point
+              ? "LOW_STOCK"
+              : "HEALTHY");
+          return status === "LOW_STOCK" || status === "OUT_OF_STOCK";
+        });
         setLowStockProducts(lowItems);
       }
 
@@ -143,7 +148,7 @@ export default function DashboardPage() {
         <MetricCard
           title="Catalog Products"
           value={summary?.total_products || 0}
-          subtitle={`${summary?.healthy_stock_count ?? 14} healthy items`}
+          subtitle={`${summary?.healthy_stock_count ?? 0} healthy items`}
           icon={Boxes}
           color="blue"
         />
@@ -224,6 +229,13 @@ export default function DashboardPage() {
                 <tbody className="divide-y divide-slate-800/60">
                   {lowStockProducts.slice(0, 5).map((p) => {
                     const inv = p.inventory!;
+                    const status =
+                      inv.stock_status ||
+                      (inv.current_stock === 0
+                        ? "OUT_OF_STOCK"
+                        : inv.current_stock <= inv.reorder_point
+                        ? "LOW_STOCK"
+                        : "HEALTHY");
                     return (
                       <tr key={p.id} className="hover:bg-slate-800/40 transition">
                         <td className="py-3 px-3">
@@ -238,7 +250,7 @@ export default function DashboardPage() {
                           <span className="text-slate-500"> / {inv.reorder_point}</span>
                         </td>
                         <td className="py-3 px-3">
-                          <StatusBadge status={inv.stock_status} />
+                          <StatusBadge status={status} />
                         </td>
                         <td className="py-3 px-3 text-right">
                           <Link
