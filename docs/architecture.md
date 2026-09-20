@@ -1,159 +1,138 @@
 # StockPilot AI — System Architecture & Design Document
 
 ## 1. Executive Overview
-**StockPilot AI** is an AI-powered inventory and procurement workflow automation platform. It is designed to interpret natural language inventory queries, analyze stock levels against reorder thresholds, generate draft purchase order proposals, request Human-in-the-Loop (HITL) approval, and safely execute transactions via audited tool calls.
+
+**StockPilot AI** is an enterprise-grade autonomous inventory management and procurement copilot designed for supermarket retail chains. It combines conversational Large Language Model (LLM) reasoning with transactional database operations, enforcing deterministic business logic, strict security guardrails, and Human-in-the-Loop (HITL) approval gates before executing financial commitments.
 
 ---
 
-## 2. Realistic MVP Scope
+## 2. High-Level System Architecture
 
-### In-Scope for MVP
-1. **Natural Language Interface & Intent Parser:**
-   - Query stock levels, low-stock warnings, and supplier details via conversational UI.
-   - Request automated inventory audits and replenishment proposal generation.
-2. **Deterministic Data Query & Reorder Analysis:**
-   - Automated detection of products where `current_stock <= reorder_point`.
-   - Dynamic calculation of suggested order quantities based on `reorder_quantity` or `(max_stock - current_stock)` while strictly respecting supplier Minimum Order Quantities (MOQ).
-3. **Structured Purchase Proposal Generation:**
-   - Multi-supplier identification (matching supplier catalog with low-stock SKUs).
-   - Structured Draft Purchase Orders (POs) created with explicit status `DRAFT_PENDING_APPROVAL`.
-4. **LangGraph State Machine & Checkpoint Persistence:**
-   - Cyclical graph orchestration with explicit state schema (`AgentState`), intent detection, tool validation, and PostgreSQL durable checkpointing.
-5. **Safe Tool Execution & Audit Trails:**
-   - Read-only tools for analytics & querying.
-   - Write/Transactional tools gated strictly behind approved tokens/states.
-   - Complete ledger/audit log of agent thoughts, tool inputs, outputs, and user approvals.
-6. **Configurable LLM Provider Adapter:**
-   - Support for Groq Cloud API (`openai/gpt-oss-120b`, `llama-3.3-70b-versatile`) and Ollama local development.
-
----
-
-## 3. High-Level System Architecture
+The system is structured as a decoupled 3-tier architecture:
 
 ```mermaid
 flowchart TD
-    User([Store Operator / Manager]) -->|Natural Language Prompt| FastAPI[FastAPI Backend /api/v1/chat]
-    FastAPI --> LangGraph[LangGraph StateGraph Engine]
+    User([Supermarket Operator / Procurement Manager])
     
-    subgraph LangGraphState [LangGraph State Machine]
-        Intent[intent_analyzer node] --> Reasoner[agent_reasoner node]
-        Reasoner -->|Tool Calls Requested| Validator[tool_validator node]
-        Reasoner -->|Direct Reply / Max Iterations| Formatter[response_formatter node]
-        Validator -->|Valid & Safe| Executor[tool_executor node]
-        Validator -->|Loop Detected / Unauthorized| Formatter
-        Executor -->|Feed Tool Output| Reasoner
+    subgraph Frontend [Next.js 15 Presentation Tier]
+        UI[React 19 Tailwind CSS Dashboard]
+        PersonaSwitcher[Role Switcher: OPERATOR / MANAGER / ADMIN]
+        ChatWidget[Conversational Assistant Interface]
+        ApprovalTable[Human-in-the-Loop Approval Queue]
     end
 
-    Executor --> Tools[Phase 2 Typed Tools]
-    Tools --> Postgres[(PostgreSQL 16 Database)]
-    Reasoner --> Groq[Groq Cloud LLM]
-    Formatter --> Response[Grounded Markdown ChatResponse]
-    Response --> User
+    subgraph Backend [FastAPI Application Tier]
+        Router[API V1 Router]
+        CorrelationMiddleware[RequestCorrelationMiddleware & Log Sanitizer]
+        AuthDeps[RBAC & Persona Dependency Injection]
+        
+        subgraph LangGraphOrchestrator [LangGraph AI Agent Engine]
+            IntentNode[intent_analyzer]
+            ReasonerNode[agent_reasoner]
+            ValidatorNode[tool_validator]
+            ExecutorNode[tool_executor]
+            FormatterNode[response_formatter]
+            Checkpointer[(PostgreSQL AsyncPostgresSaver)]
+        end
+        
+        subgraph BusinessServices [Transactional Service Layer]
+            ProdService[ProductService]
+            InvService[InventoryService]
+            PRService[PurchaseRequestService]
+            ApprovalService[ApprovalService]
+            POService[PurchaseOrderService]
+            AuditService[AuditLogService]
+        end
+    end
+
+    subgraph ExternalServices [External Integrations]
+        GroqLLM[Groq Cloud API: llama-3.3-70b-versatile]
+        MockEDI[Mock Supplier Procurement Gateway]
+    end
+
+    subgraph DatabaseTier [Data & Persistence Tier]
+        Postgres[(PostgreSQL 16 Database)]
+    end
+
+    User <--> UI
+    UI <--> Router
+    Router --> CorrelationMiddleware --> AuthDeps
+    AuthDeps --> LangGraphOrchestrator
+    AuthDeps --> BusinessServices
+    
+    LangGraphOrchestrator <--> GroqLLM
+    LangGraphOrchestrator <--> Checkpointer
+    LangGraphOrchestrator --> BusinessServices
+    
+    BusinessServices --> MockEDI
+    BusinessServices <--> Postgres
+    Checkpointer <--> Postgres
 ```
 
 ---
 
-## 4. LangGraph State Schema (`AgentState`)
+## 3. Core Architectural Subsystems
 
-```python
-class AgentState(TypedDict):
-    # Conversation Messages (Appended via LangGraph add_messages reducer)
-    messages: Annotated[Sequence[BaseMessage], add_messages]
+### 3.1 Presentation Tier (Next.js 15)
+- **Framework:** Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Lucide Icons.
+- **Pages:**
+  - `/` (Dashboard): Real-time KPI cards (Total SKUs, Low Stock, Pending Approvals, Total Value) and recent procurement activity.
+  - `/inventory`: Paginated, searchable product inventory table with stock status badges and quick reorder calculator.
+  - `/assistant`: Interactive chat copilot with real-time tool execution tracking and draft purchase proposal cards.
+  - `/approvals`: Manager queue with cryptographic SHA-256 proposal hash verification and single-click Approve / Reject actions.
+  - `/audit`: Immutable security and operation audit trail ledger.
+- **Client Features:** User persona switching (`MANAGER`, `OPERATOR`, `ADMIN`) injecting simulated authenticated `X-User-Id` headers.
 
-    # Session Identifiers
-    thread_id: str
-    user_id: Optional[str]
+### 3.2 Application & Agent Tier (FastAPI + LangGraph)
+- **Framework:** FastAPI, Pydantic V2, LangGraph, LangChain Core.
+- **Agent Workflow:** Cyclical StateGraph with bounded iterations (max 5 iterations), preventing infinite loops.
+- **Checkpointing:** State persistence via `AsyncPostgresSaver` associating state with unique `thread_id` sessions.
+- **Reliability Wrapper:** `@safe_tool_executor` providing timeout protection (`asyncio.wait_for`), bounded retries for read queries, and exception trapping.
 
-    # Workflow Reasoning & Extracted Intent
-    current_intent: Optional[str]  # e.g. LOW_STOCK_AUDIT, SUPPLIER_INQUIRY, DRAFT_PURCHASE_REQUEST
-    retrieved_data: Dict[str, Any]
-    proposed_actions: List[Dict[str, Any]]
-    executed_tools: List[Dict[str, Any]]
-    validation_errors: List[str]
-
-    # Lifecycle & Loop Guard
-    workflow_status: str  # IN_PROGRESS, COMPLETED, WAITING_INPUT, FAILED
-    iteration_count: int
-    final_response: Optional[str]
-```
+### 3.3 Data Tier (PostgreSQL 16)
+- **ORM & Migrations:** SQLAlchemy 2.0 (Async Engine + asyncpg), Alembic migrations.
+- **Integrity Constraints:** Database-level `CHECK` constraints on stock quantities, non-negative unit costs, ratings, and unique SKU/Supplier codes.
+- **Audit Logging:** Append-only ledger recording every user and AI state transition with actor IDs, IP addresses, and state diff payloads.
 
 ---
 
-## 5. Checkpointing & Multi-Turn Persistence
-
-LangGraph utilizes durable checkpointing via PostgreSQL (`AsyncPostgresSaver` backed by connection pooling).
-
-* **Session Association:** Every user conversation is assigned a unique `thread_id` passed in `config = {"configurable": {"thread_id": thread_id}}`.
-* **State Recovery:** If an agent interaction spans multiple turns or requires resumption after human review, LangGraph loads the exact previous checkpoint from the `checkpoints` table.
+## 4. End-to-End Data & Execution Flow
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User
-    participant API as FastAPI Router
-    participant Graph as LangGraph Engine
-    participant Checkpointer as PostgreSQL Checkpointer
-    participant Tools as DB Tool Layer
-    participant LLM as Groq LLM
+    actor Manager as Procurement Manager
+    participant UI as Next.js Assistant
+    participant API as FastAPI /api/v1/chat
+    participant Graph as LangGraph Orchestrator
+    participant LLM as Groq LLM (llama-3.3-70b)
+    participant Tools as Agent Tool Layer
+    participant DB as PostgreSQL Database
+    participant Approvals as Approval Engine
 
-    User->>API: POST /api/v1/chat (thread_id="session_123")
-    API->>Checkpointer: Load previous state for thread_id="session_123"
-    Checkpointer-->>Graph: Loaded AgentState
-    Graph->>LLM: Formulate context + bound tools
-    LLM-->>Graph: Request tool call (find_low_stock_products)
-    Graph->>Tools: Execute query on PostgreSQL
-    Tools-->>Graph: Low stock items data
-    Graph->>Checkpointer: Save checkpoint
-    Graph->>LLM: Feed ToolMessage
-    LLM-->>Graph: Formulate grounded markdown reply
-    Graph->>Checkpointer: Save final state (status="COMPLETED")
+    Manager->>UI: "Check low stock and create a draft PR for whole milk"
+    UI->>API: POST /api/v1/chat (thread_id="t-101", user_id="sarah_manager")
+    API->>Graph: Execute StateGraph
+    Graph->>LLM: Analyze intent & select tools
+    LLM-->>Graph: Call find_low_stock_products(category='Dairy')
+    Graph->>Tools: execute(find_low_stock_products)
+    Tools->>DB: SELECT * FROM inventory_levels WHERE current_stock <= reorder_point
+    DB-->>Tools: [Whole Milk: Stock=8, ReorderPoint=20, Deficit=12]
+    Tools-->>Graph: ToolResult.ok(...)
+    Graph->>LLM: Analyze deficit & suggest draft PR
+    LLM-->>Graph: Call create_draft_purchase_request(supplier_id=1, qty=20)
+    Graph->>Tools: execute(create_draft_purchase_request)
+    Tools->>DB: INSERT INTO purchase_requests (status='DRAFT')
+    DB-->>Tools: Created PR-20260920-A1B2
+    Tools-->>Graph: ToolResult.ok(...)
+    Graph->>LLM: Generate final markdown response
+    LLM-->>Graph: Grounded markdown response with draft PR details
     Graph-->>API: Return ChatResponse
-    API-->>User: Render response + tool audit logs
-```
+    API-->>UI: Display assistant response + Proposal card
 
----
-
-## 6. Segregated Tool Boundaries
-
-| Tool Name | Type | Safety Level | Description |
-|---|---|---|---|
-| `search_products` | Read-only | Safe / Auto | Searches product catalog by name/SKU/category. |
-| `get_inventory` | Read-only | Safe / Auto | Queries stock levels, storage aisles, and stock status. |
-| `find_low_stock_products` | Read-only | Safe / Auto | Extracts all SKUs at or below reorder threshold with shortages. |
-| `get_supplier_options` | Read-only | Safe / Auto | Look up supplier pricing, ratings, lead times, and MOQs. |
-| `calculate_reorder_recommendation` | Analytical | Safe / Auto | Computes suggested order sizes with supplier MOQ constraints. |
-| `create_draft_purchase_request` | Safe Mutation | Safe (Draft only) | Creates draft purchase request. **Does NOT issue purchase orders.** |
-| `get_purchase_request_status` | Read-only | Safe / Auto | Checks status and line items of a purchase request. |
-
----
-
-## 7. Database Entity Schema
-
-```
-+----------------+          +-----------------------+          +----------------+
-|    Supplier    | 1      * |   SupplierProduct     | *      1 |    Product     |
-+----------------+----------+-----------------------+----------+----------------+
-| id (PK)        |          | id (PK)               |          | id (PK)        |
-| name           |          | supplier_id (FK)      |          | sku (Unique)   |
-| email          |          | product_id (FK)       |          | name           |
-| lead_time_days |          | unit_cost             |          | current_stock  |
-| rating         |          | min_order_qty         |          | reorder_point  |
-+----------------+          +-----------------------+          | max_stock      |
-                                                               | unit_price     |
-                                                               +-------+--------+
-                                                                       | 1
-                                                                       |
-                                                                       | *
-+----------------+ 1      * +-----------------------+ *      1 +-------v--------+
-| PurchaseOrder  +----------+   PurchaseOrderItem   +----------+                |
-+----------------+          +-----------------------+          +----------------+
-| id (PK)        |          | id (PK)               |
-| order_number   |          | purchase_order_id(FK) |
-| supplier_id(FK)|          | product_id (FK)       |
-| status         |          | quantity              |
-| total_amount   |          | unit_cost             |
-| created_by     |          +-----------------------+
-| approved_by    |
-| created_at     |
-+-------+--------+
+    Manager->>UI: Clicks "Approve & Issue PO"
+    UI->>Approvals: POST /api/v1/approvals/requests/{id}/approve
+    Approvals->>DB: Verify SHA-256 Hash, Role & Row Lock
+    Approvals->>DB: INSERT INTO purchase_orders (status='ISSUED')
+    Approvals-->>UI: Order Execution Receipt
 ```

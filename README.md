@@ -1,124 +1,254 @@
 # StockPilot AI 📦🤖
 
-> **AI-powered Inventory & Procurement Workflow Automation with Human-in-the-Loop Safeguards**
+> **Enterprise-Grade AI Inventory & Procurement Copilot with Human-in-the-Loop Safeguards**
 
-StockPilot AI is an autonomous yet safely constrained inventory management copilot built with **FastAPI**, **SQLAlchemy 2.0 Async**, **PostgreSQL**, **Groq LLM (LLaMA 3.3 / GPT-OSS)**, **LangGraph State Machine**, and **Next.js**. It automates stock audits, supplier selection, and purchase order drafting while ensuring all financial mutations remain strictly gated by human approval.
-
----
-
-## 🏗️ Architecture & Component Responsibilities
-
-For the complete technical specification, data dictionary, and security model, see:
-👉 [docs/architecture.md](docs/architecture.md)
-
-### Key Design Highlights:
-- **Modular Monolith:** Single unified backend service with clear separation between API routes, Pydantic schemas, database models, business services, and agent tool execution.
-- **LangGraph State Machine:** Explicit `StateGraph` workflow (`intent_analyzer` -> `agent_reasoner` -> `tool_validator` -> `tool_executor` -> `response_formatter`) with loop detection and conditional routing.
-- **Durable Checkpointing:** Session persistence with PostgreSQL (`AsyncPostgresSaver`) allowing multi-turn memory and thread state retrieval.
-- **Deterministic Tool Calling:** The LLM does not generate raw SQL or hallucinate inventory balances. It invokes typed, validated Python tools and bases responses strictly on returned database rows.
-- **Strict Financial Boundaries:** Creating a purchase request leaves it in `DRAFT` status. No financial purchase orders are issued without explicit human approval.
+StockPilot AI is an autonomous, reliable inventory management and procurement system built with **FastAPI**, **SQLAlchemy 2.0 Async**, **PostgreSQL 16**, **Groq Cloud LLM (LLaMA 3.3 70B)**, **LangGraph**, and **Next.js 15**. It automates inventory health audits, shortage detection, supplier price discovery, and draft replenishment proposals while ensuring financial transactions are strictly gated by manager authorization.
 
 ---
 
-## 🤖 LangGraph Agent State Machine
+## 📑 Table of Contents
+1. [Key Features](#-key-features)
+2. [Architecture Overview](#-architecture-overview)
+3. [Technology Stack](#-technology-stack)
+4. [User Interface & Screenshots](#-user-interface--screenshots)
+5. [Local Quickstart & Setup](#-local-quickstart--setup)
+6. [Environment Configuration](#-environment-configuration)
+7. [Testing & Verification](#-testing--verification)
+8. [Documentation Links](#-documentation-links)
+9. [Verified Features vs Known Limitations](#-verified-features-vs-known-limitations)
+10. [Release Checklist](#-release-checklist)
 
+---
+
+## 🌟 Key Features
+
+- **Conversational Inventory Copilot:** Natural-language assistant capable of understanding multi-criteria stock lookups, vendor searches, and replenishment requests.
+- **Deterministic Business Services:** Reorder mathematics, minimum order quantity (MOQ) adjustments, and unit cost estimations are calculated via strict Python domain services, never hallucinated by LLM prompts.
+- **LangGraph State Orchestration:** Cyclical `StateGraph` workflow (`intent_analyzer` ➔ `agent_reasoner` ➔ `tool_validator` ➔ `tool_executor` ➔ `response_formatter`) with loop detection guards and session state checkpointing.
+- **Human-in-the-Loop (HITL) Approval Gate:** AI agents are structurally restricted to creating proposals in `DRAFT` status. Only authorized managers can review, verify, and approve financial Purchase Orders.
+- **Cryptographic Hash Verification (SHA-256):** Proposals are digitally hashed upon creation; hashes are re-validated prior to order execution to guarantee line items or supplier prices were not tampered with.
+- **Tool Reliability & Bounded Retries:** Idempotent read-only queries automatically retry with exponential backoff on transient DB blips; mutating operations strictly execute with `max_retries=0`.
+- **Security & Privacy Hardening:** Role-Based Access Control (RBAC), prompt injection defense, SQL injection protection, sensitive credential log redaction, and `X-Request-ID` correlation tracing.
+
+---
+
+## 🏗️ Architecture Overview
+
+```mermaid
+flowchart TD
+    User([Supermarket Operator / Procurement Manager])
+    
+    subgraph Presentation [Next.js 15 Frontend]
+        Dashboard["Dashboard (KPIs & Alerts)"]
+        Catalog["Inventory Catalog & Stock Adjuster"]
+        Copilot["AI Assistant Chat Interface"]
+        Approvals["Manager Approval Center"]
+        AuditFeed["Security & Audit Log Ledger"]
+    end
+
+    subgraph BackendAPI [FastAPI Application Tier]
+        Router["/api/v1 Endpoints"]
+        Middleware["RequestCorrelationMiddleware & Log Sanitizer"]
+        
+        subgraph AgentEngine [LangGraph AI Orchestrator]
+            Intent["intent_analyzer"] --> Reasoner["agent_reasoner"]
+            Reasoner --> RouterTool{"Tool Router"}
+            RouterTool -- Valid Tool --> Executor["tool_executor (@safe_tool_executor)"]
+            RouterTool -- Done --> Formatter["response_formatter"]
+            Executor --> Reasoner
+        end
+        
+        subgraph Services [Domain Business Services]
+            InvService["InventoryService"]
+            PRService["PurchaseRequestService"]
+            ApprService["ApprovalService"]
+            AuditService["AuditLogService"]
+        end
+    end
+
+    subgraph DataTier [Persistence & External APIs]
+        Groq["Groq Cloud API (llama-3.3-70b-versatile)"]
+        Postgres[(PostgreSQL 16 Database)]
+        Checkpoints[(LangGraph Checkpoints)]
+    end
+
+    User <--> Presentation
+    Presentation <--> Router
+    Router --> Middleware --> AgentEngine
+    AgentEngine <--> Groq
+    AgentEngine <--> Checkpoints
+    AgentEngine --> Services
+    Services <--> Postgres
 ```
-[ User Prompt ]
-      │
-      ▼
-[ intent_analyzer ] ─── extracts intent (e.g. LOW_STOCK_AUDIT, DRAFT_PURCHASE_REQUEST)
-      │
-      ▼
-[ agent_reasoner ] <───┐ (Iterative tool-calling loop)
-      │                │
-      ├────────────────┼────────────────────────┐
-      │ (Tool Calls)   │                        │ (Direct Reply / Finished)
-      ▼                │                        ▼
-[ tool_validator ]     │               [ response_formatter ]
-      │                │                        │
-      ├── (Valid)      │                        ▼
-      ▼                │                   [ Final Reply ]
-[ tool_executor ] ─────┘
-      │ (Runs on PostgreSQL)
+
+---
+
+## 💻 Technology Stack
+
+| Domain | Technology | Version | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Backend Framework** | FastAPI | `^0.110.0` | High-performance async REST API framework |
+| **Agent Orchestration**| LangGraph & LangChain | `^0.0.30` | Cyclical state machine workflow and multi-turn routing |
+| **LLM Inference** | Groq Cloud API | `^0.5.0` | Ultra-fast token inference (`llama-3.3-70b-versatile`) |
+| **Database & ORM** | PostgreSQL 16 & SQLAlchemy | `^2.0.28` | Relational storage with asyncpg connection pooling |
+| **Schema Migrations** | Alembic | `^1.13.1` | Declarative database migration versioning |
+| **Frontend Framework**| Next.js (App Router) | `15.1.4` | React 19 server/client components and UI pages |
+| **Styling & Icons** | Tailwind CSS & Lucide React | `^3.4.17` | Responsive dark/light theme dashboard styling |
+| **Containerization** | Docker & Docker Compose | `v2+` | Multi-stage container packaging for all 3 tiers |
+
+---
+
+## 🖼️ User Interface & Screenshots
+
+| Page | View Description | Placeholder |
+| :--- | :--- | :---: |
+| **Executive Dashboard** | Real-time KPI summaries, low-stock alerts, procurement spend trends | `[Dashboard Screenshot]` |
+| **Inventory Management**| Filterable catalog, stock levels, warehouse coordinates, reorder math | `[Inventory Screenshot]` |
+| **Conversational Copilot** | Natural language queries, live tool execution traces, proposal cards | `[AI Assistant Screenshot]` |
+| **Approval Center** | Role-gated queue, SHA-256 hash validation, single-click PO issuance | `[Approvals Screenshot]` |
+| **Audit Ledger** | Append-only compliance log with JSON before/after state diff inspection | `[Audit Trail Screenshot]` |
+
+---
+
+## ⚡ Local Quickstart & Setup
+
+### Option A: Docker Compose (Recommended)
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/your-org/stockpilot-ai.git
+cd stockpilot-ai
+
+# 2. Configure environment variables
+cp .env.example .env
+# Edit .env and supply your GROQ_API_KEY
+
+# 3. Launch all services (PostgreSQL, Backend, and Frontend)
+docker compose up --build -d
+
+# 4. Access the applications
+# Frontend Dashboard: http://localhost:3000
+# Backend OpenAPI Docs: http://localhost:8000/docs
+# Backend Health Check: http://localhost:8000/api/v1/health
 ```
 
----
-
-## 🛠️ Registered Agent Tools
-
-All tools return a structured `ToolResult[T]` envelope with `success: bool`, `data: T`, and `error: ToolError`.
-
-| Tool Name | Type | Description | Input Schema | Output Schema |
-|---|---|---|---|---|
-| `search_products` | Read-only | Search catalog by SKU/name/category | `SearchProductsInput` | `SearchProductsOutput` |
-| `get_inventory` | Read-only | Filter inventory by stock status (`HEALTHY`, `LOW_STOCK`, `OUT_OF_STOCK`) | `GetInventoryInput` | `GetInventoryOutput` |
-| `find_low_stock_products` | Read-only | Retrieve all items below reorder threshold with deficits | `FindLowStockProductsInput` | `FindLowStockProductsOutput` |
-| `get_supplier_options` | Read-only | Look up supplier pricing, ratings, lead times, and MOQs for a SKU | `GetSupplierOptionsInput` | `GetSupplierOptionsOutput` |
-| `calculate_reorder_recommendation` | Analytical | Compute replenishment quantity, MOQ adjustments & costs | `CalculateReorderRecommendationInput` | `CalculateReorderRecommendationOutput` |
-| `create_draft_purchase_request` | Safe Mutation | Create a `DRAFT` request for manager review | `CreateDraftPurchaseRequestInput` | `CreateDraftPurchaseRequestOutput` |
-| `get_purchase_request_status` | Read-only | Check approval status and item breakdown by PR number/ID | `GetPurchaseRequestStatusInput` | `GetPurchaseRequestStatusOutput` |
-
----
-
-## ⚡ Quickstart & Setup Guide (Windows PowerShell)
+### Option B: Local Python Virtual Environment & Node.js
 
 ```powershell
-# 1. Start PostgreSQL
-docker compose up -d
+# 1. Start PostgreSQL via Docker
+docker compose up postgres -d
 
-# 2. Activate virtual environment & run migrations
+# 2. Setup Backend
 cd backend
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-alembic upgrade head
+pip install -r requirements.txt
+cp .env.example .env
 
-# 3. Seed supermarket database
+# Apply migrations and seed initial supermarket data
+alembic upgrade head
 python scripts/seed_data.py
 
-# 4. Run backend tests (64 passing tests across unit, integration, and security suites)
-pytest -v
-
-# 5. Start FastAPI Server
+# Start Backend Server
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
-# 6. Start Next.js Frontend (in a new terminal)
+# 3. Setup Frontend (in a new terminal)
 cd ../frontend
 npm install
-npm run test     # 7 passing Vitest tests
-npm run dev      # Runs at http://localhost:3000
+cp .env.example .env.local
+npm run dev
+# Open http://localhost:3000
 ```
 
 ---
 
-## 🎨 Next.js Frontend Pages
+## ⚙️ Environment Configuration
 
-| Route | Page | Description |
-|---|---|---|
-| `/` | **Dashboard** | Real-time KPI cards, low stock alerts, recent POs, and live audit feed |
-| `/inventory` | **Inventory & Catalog** | Live search, category filtering, stock thresholds, and stock adjustments |
-| `/assistant` | **AI Assistant Copilot** | Multi-turn conversational chat, tool execution step visualizer, proposal cards |
-| `/approvals` | **Approval Center** | Role-gated review, SHA-256 hash checks, 1-click PO dispatch, rejection notes |
-| `/audit` | **Audit History** | Filterable provenance ledger with JSON before/after state inspection |
+### Root / Backend `.env` Template
+```ini
+ENVIRONMENT=development
+DEBUG=true
+PROJECT_NAME="StockPilot AI"
+API_V1_PREFIX="/api/v1"
+
+POSTGRES_SERVER=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=stockpilot_db
+POSTGRES_USER=stockpilot
+POSTGRES_PASSWORD=stockpilot_password
+DATABASE_URL=postgresql+asyncpg://stockpilot:stockpilot_password@localhost:5432/stockpilot_db
+
+BACKEND_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+
+LLM_PROVIDER=groq
+LLM_MODEL_NAME=llama-3.3-70b-versatile
+GROQ_API_KEY=your_groq_api_key_here
+```
+
+### Frontend `.env.local` Template
+```ini
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
+PORT=3000
+```
 
 ---
 
-## 🔒 Human-in-the-Loop (HITL) Security Model
+## 🧪 Testing & Verification
 
-1. **Role-Based Authorization:** Approval operations (`/api/v1/approvals/...`) strictly enforce `MANAGER` or `ADMIN` roles.
-2. **Segregation of Duties (No Self-Approval):** Requesters are prohibited from approving their own purchase proposals.
-3. **Proposal Version Integrity (SHA-256):** Deterministic content hashing prevents approval of proposals whose line items or supplier prices changed during review.
-4. **Idempotency Protection:** Unique client idempotency keys prevent accidental double-ordering on network retries.
-5. **Concurrency Safety:** Database row locking (`with_for_update()`) eliminates race conditions during simultaneous manager actions.
-6. **Audit Ledger:** Every submission, approval, rejection, and order issuance is recorded in immutable database audit logs.
+### Backend Automated Test Suite (85 Tests)
+```powershell
+cd backend
+.\.venv\Scripts\pytest -v
+```
+- **Unit Tests:** Business logic, reorder formulas, LLM adapter, agent state transitions.
+- **Integration Tests:** REST endpoints, inventory adjustments, approval lifecycle, audit trails.
+- **Evaluation Benchmark:** 12 benchmark cases verifying intent accuracy and tool mapping.
+- **Reliability Tests:** Timeout protection, bounded retries, and failure injection.
+- **Security Tests:** RBAC enforcement, self-approval prevention, SHA-256 hash checks, log sanitization.
+
+### Frontend Test Suite (7 Tests)
+```powershell
+cd frontend
+npm run test
+```
 
 ---
 
-## 🗺️ Implementation Roadmap
+## 📚 Documentation Links
 
-- [x] **Phase 0: Project Setup & System Architecture**
-- [x] **Phase 1: Database & FastAPI Foundation**
-- [x] **Phase 2: Inventory Business Logic & Agent Tools Layer**
-- [x] **Phase 3: LLM Integration & Conversational Tool Calling**
-- [x] **Phase 4: LangGraph Workflow Orchestration & State Checkpointing**
-- [x] **Phase 5: Human-in-the-Loop (HITL) Approval Workflow & PO Execution**
-- [x] **Phase 6: Next.js Frontend Dashboard & Conversational Copilot UI**
-- [ ] **Phase 7: End-to-End Integration, Dockerization & Portfolio Polish**
+- 🏛️ [System Architecture & Design](docs/architecture.md)
+- 🗄️ [Database Schema & Data Dictionary](docs/database-schema.md)
+- 🤖 [LangGraph Workflow & Tool Orchestration](docs/agent-workflow.md)
+- 🔒 [Security Review & STRIDE Threat Model](docs/security.md)
+- 📊 [Agent Evaluation Benchmark Report](docs/evaluation.md)
+- 🚀 [Deployment & Infrastructure Guide](docs/deployment.md)
+- 🛡️ [Reliability & Failure Recovery Report](docs/reliability_report.md)
+
+---
+
+## 🔍 Verified Features vs Known Limitations
+
+### ✅ Verified Features (Locally Tested)
+- **Deterministic Reorder Recommendations:** Evaluated against 25 product SKUs with supplier MOQ constraints.
+- **LangGraph Tool Loop:** Verified with Groq LLM and mock adapters; prevents infinite looping via bounded iterations.
+- **Cryptographic Approval Gate:** Verified preventing parameter tampering via SHA-256 mismatch detection.
+- **RBAC Security:** Verified denying operator approval attempts with HTTP 403 Forbidden.
+- **Structured Log Sanitization:** Verified scrubbing API keys and passwords from log records.
+
+### ⚠️ Known Limitations & Deployment Scope
+- **Checkpointer Backend:** Default development setup uses in-memory/async thread state; production multi-instance clustering requires Redis or PostgreSQL checkpointer.
+- **Free-Tier Cold Starts:** Deploying on free serverless containers (e.g. Render Free) introduces a 50s cold-start latency if idle.
+- **External EDI Integration:** Supplier PO dispatch is implemented via `MockProcurementClient` and requires production EDI/ERP adapter configuration.
+
+---
+
+## 📋 Release Checklist
+
+- [x] All 85 backend tests passing (`pytest -v`).
+- [x] All 7 frontend Vitest tests passing (`npm run test`).
+- [x] Frontend production build verified (`npm run build`).
+- [x] Multi-stage Dockerfiles created for Backend and Frontend.
+- [x] Docker Compose configured with healthchecks, non-root users, and volumes.
+- [x] Database migrations and reset procedures tested cleanly (`reset_db.py`).
+- [x] Zero hardcoded secrets in repository.
+- [x] Complete technical documentation suite generated in `docs/`.
