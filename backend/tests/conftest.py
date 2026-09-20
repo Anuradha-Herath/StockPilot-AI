@@ -4,6 +4,7 @@ from typing import AsyncGenerator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
@@ -56,7 +57,34 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture(scope="function")
 async def seeded_db_session(db_session: AsyncSession) -> AsyncSession:
-    """Pre-seed sample products and suppliers for integration tests."""
+    """Pre-seed sample users, products, suppliers, and inventory for integration tests."""
+    # 0. Users (idempotent)
+    existing_user = (await db_session.execute(select(User))).scalars().first()
+    if not existing_user:
+        admin_user = User(
+            email="admin@test.com",
+            username="test_admin",
+            full_name="Test Administrator",
+            hashed_password="mock",
+            role=UserRole.ADMIN,
+        )
+        manager_user = User(
+            email="manager@test.com",
+            username="test_manager",
+            full_name="Test Manager",
+            hashed_password="mock",
+            role=UserRole.MANAGER,
+        )
+        operator_user = User(
+            email="operator@test.com",
+            username="test_operator",
+            full_name="Test Operator",
+            hashed_password="mock",
+            role=UserRole.OPERATOR,
+        )
+        db_session.add_all([admin_user, manager_user, operator_user])
+        await db_session.flush()
+
     # 1. Supplier
     supplier1 = Supplier(
         code="TEST-SUP-01",
@@ -128,11 +156,54 @@ async def seeded_db_session(db_session: AsyncSession) -> AsyncSession:
 
 @pytest_asyncio.fixture(scope="function")
 async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """Test client using the test database session dependency."""
+    """Test client using a clean test database session."""
+    existing_user = (await db_session.execute(select(User))).scalars().first()
+    if not existing_user:
+        admin_user = User(
+            email="admin@test.com",
+            username="test_admin",
+            full_name="Test Administrator",
+            hashed_password="mock",
+            role=UserRole.ADMIN,
+        )
+        manager_user = User(
+            email="manager@test.com",
+            username="test_manager",
+            full_name="Test Manager",
+            hashed_password="mock",
+            role=UserRole.MANAGER,
+        )
+        operator_user = User(
+            email="operator@test.com",
+            username="test_operator",
+            full_name="Test Operator",
+            hashed_password="mock",
+            role=UserRole.OPERATOR,
+        )
+        db_session.add_all([admin_user, manager_user, operator_user])
+        await db_session.commit()
+
     app = create_application()
 
     async def override_get_db():
         yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as async_client:
+        yield async_client
+
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def seeded_client(seeded_db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """Test client using the pre-seeded database session."""
+    app = create_application()
+
+    async def override_get_db():
+        yield seeded_db_session
 
     app.dependency_overrides[get_db] = override_get_db
 

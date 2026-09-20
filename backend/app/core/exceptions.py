@@ -46,6 +46,24 @@ class ConflictException(AppException):
         )
 
 
+class UnauthorizedException(AppException):
+    def __init__(self, message: str = "Authentication required.", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            details=details,
+        )
+
+
+class ForbiddenException(AppException):
+    def __init__(self, message: str = "Access Denied: Insufficient permissions.", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            status_code=status.HTTP_403_FORBIDDEN,
+            details=details,
+        )
+
+
 class DatabaseConnectionException(AppException):
     def __init__(self, message: str = "Database connection error"):
         super().__init__(

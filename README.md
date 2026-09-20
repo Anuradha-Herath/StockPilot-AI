@@ -74,12 +74,23 @@ alembic upgrade head
 # 3. Seed supermarket database
 python scripts/seed_data.py
 
-# 4. Run backend tests (47 passing tests)
+# 4. Run backend tests (63 passing tests across unit, integration, and security suites)
 pytest -v
 
 # 5. Start FastAPI Server
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+---
+
+## 🔒 Human-in-the-Loop (HITL) Security Model
+
+1. **Role-Based Authorization:** Approval operations (`/api/v1/approvals/...`) strictly enforce `MANAGER` or `ADMIN` roles.
+2. **Segregation of Duties (No Self-Approval):** Requesters are prohibited from approving their own purchase proposals.
+3. **Proposal Version Integrity (SHA-256):** Deterministic content hashing prevents approval of proposals whose line items or supplier prices changed during review.
+4. **Idempotency Protection:** Unique client idempotency keys prevent accidental double-ordering on network retries.
+5. **Concurrency Safety:** Database row locking (`with_for_update()`) eliminates race conditions during simultaneous manager actions.
+6. **Audit Ledger:** Every submission, approval, rejection, and order issuance is recorded in immutable database audit logs.
 
 ---
 
@@ -90,6 +101,6 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 - [x] **Phase 2: Inventory Business Logic & Agent Tools Layer**
 - [x] **Phase 3: LLM Integration & Conversational Tool Calling**
 - [x] **Phase 4: LangGraph Workflow Orchestration & State Checkpointing**
-- [ ] **Phase 5: Human-in-the-Loop (HITL) Approval Workflow & PO Execution** (LangGraph interrupt() breakpoints, manager review API, PO state machine)
+- [x] **Phase 5: Human-in-the-Loop (HITL) Approval Workflow & PO Execution**
 - [ ] **Phase 6: Next.js Frontend Dashboard & Conversational Copilot UI**
 - [ ] **Phase 7: End-to-End Integration, Dockerization & Portfolio Polish**

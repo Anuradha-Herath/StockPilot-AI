@@ -11,6 +11,7 @@ class PurchaseRequestStatus(str, enum.Enum):
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
     CONVERTED_TO_PO = "CONVERTED_TO_PO"
+    EXPIRED = "EXPIRED"
     CANCELLED = "CANCELLED"
 
 
