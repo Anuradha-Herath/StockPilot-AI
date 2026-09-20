@@ -74,12 +74,30 @@ alembic upgrade head
 # 3. Seed supermarket database
 python scripts/seed_data.py
 
-# 4. Run backend tests (63 passing tests across unit, integration, and security suites)
+# 4. Run backend tests (64 passing tests across unit, integration, and security suites)
 pytest -v
 
 # 5. Start FastAPI Server
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+
+# 6. Start Next.js Frontend (in a new terminal)
+cd ../frontend
+npm install
+npm run test     # 7 passing Vitest tests
+npm run dev      # Runs at http://localhost:3000
 ```
+
+---
+
+## 🎨 Next.js Frontend Pages
+
+| Route | Page | Description |
+|---|---|---|
+| `/` | **Dashboard** | Real-time KPI cards, low stock alerts, recent POs, and live audit feed |
+| `/inventory` | **Inventory & Catalog** | Live search, category filtering, stock thresholds, and stock adjustments |
+| `/assistant` | **AI Assistant Copilot** | Multi-turn conversational chat, tool execution step visualizer, proposal cards |
+| `/approvals` | **Approval Center** | Role-gated review, SHA-256 hash checks, 1-click PO dispatch, rejection notes |
+| `/audit` | **Audit History** | Filterable provenance ledger with JSON before/after state inspection |
 
 ---
 
@@ -102,5 +120,5 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 - [x] **Phase 3: LLM Integration & Conversational Tool Calling**
 - [x] **Phase 4: LangGraph Workflow Orchestration & State Checkpointing**
 - [x] **Phase 5: Human-in-the-Loop (HITL) Approval Workflow & PO Execution**
-- [ ] **Phase 6: Next.js Frontend Dashboard & Conversational Copilot UI**
+- [x] **Phase 6: Next.js Frontend Dashboard & Conversational Copilot UI**
 - [ ] **Phase 7: End-to-End Integration, Dockerization & Portfolio Polish**
