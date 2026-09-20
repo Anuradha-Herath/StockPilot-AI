@@ -43,6 +43,19 @@ async def create_draft_purchase_request(
         actor_id="langgraph_copilot_tool",
     )
 
+    # Immediately transition from DRAFT to PENDING_APPROVAL so manager can approve
+    from app.services.approval_service import ApprovalService
+    pr_response = await ApprovalService.submit_for_approval(
+        db=db,
+        request_id=pr_response.id,
+    )
+
+    item_tuples = [
+        (item.product_id, item.quantity, item.estimated_unit_cost)
+        for item in pr_response.items
+    ]
+    proposal_hash = ApprovalService.compute_proposal_hash(pr_response.supplier_id, item_tuples)
+
     line_summaries = [
         PurchaseRequestLineItemSummary(
             id=item.id,
@@ -67,8 +80,9 @@ async def create_draft_purchase_request(
             reason=pr_response.reason,
             total_estimated_cost=pr_response.total_estimated_cost,
             items=line_summaries,
+            proposal_version_hash=proposal_hash,
             created_at=pr_response.created_at.isoformat(),
-            next_step="Proposal registered in DRAFT state. Awaiting manager approval before PO issuance.",
+            next_step="Proposal registered in PENDING_APPROVAL state. Awaiting manager approval before PO issuance.",
         )
     )
 

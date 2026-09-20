@@ -188,8 +188,8 @@ class ApprovalService:
             .where(PurchaseRequest.id == request_id)
             .with_for_update()
             .options(
-                joinedload(PurchaseRequest.supplier),
-                selectinload(PurchaseRequest.items).joinedload(PurchaseRequestItem.product),
+                selectinload(PurchaseRequest.supplier),
+                selectinload(PurchaseRequest.items).selectinload(PurchaseRequestItem.product),
             )
         )
         result = await db.execute(query)
@@ -378,7 +378,7 @@ class ApprovalService:
             select(PurchaseRequest)
             .where(PurchaseRequest.id == request_id)
             .with_for_update()
-            .options(joinedload(PurchaseRequest.supplier))
+            .options(selectinload(PurchaseRequest.supplier))
         )
         result = await db.execute(query)
         req = result.scalar_one_or_none()

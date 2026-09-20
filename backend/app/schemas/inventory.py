@@ -18,6 +18,7 @@ class InventoryLevelResponse(InventoryLevelBase):
     product_id: int
     available_stock: int
     is_low_stock: bool
+    stock_status: str
     last_restocked_at: Optional[datetime] = None
     updated_at: datetime
 

@@ -94,7 +94,7 @@ async def test_tool_create_draft_purchase_request(seeded_db_session):
     res = await create_draft_purchase_request(db=seeded_db_session, args=args)
 
     assert res.success is True
-    assert res.data.status == PurchaseRequestStatus.DRAFT
+    assert res.data.status == PurchaseRequestStatus.PENDING_APPROVAL
     assert res.data.total_estimated_cost == Decimal("90.00")  # 30 * 3.00
     assert "manager approval" in res.data.next_step.lower()
 
@@ -104,7 +104,7 @@ async def test_tool_create_draft_purchase_request(seeded_db_session):
 
     assert status_res.success is True
     assert status_res.data.request_number == res.data.request_number
-    assert status_res.data.status == PurchaseRequestStatus.DRAFT
+    assert status_res.data.status == PurchaseRequestStatus.PENDING_APPROVAL
 
 
 @pytest.mark.asyncio

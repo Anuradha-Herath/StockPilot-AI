@@ -78,6 +78,7 @@ class AgentService:
                 arguments=t.get("arguments", {}),
                 success=t.get("success", True),
                 result_summary=t.get("summary", "Tool executed"),
+                data=t.get("data"),
             )
             for t in final_state.get("executed_tools", [])
         ]

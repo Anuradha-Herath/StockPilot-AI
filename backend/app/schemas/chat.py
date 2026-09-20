@@ -12,6 +12,7 @@ class ToolCallLog(BaseModel):
     arguments: Dict[str, Any]
     success: bool
     result_summary: Optional[str] = None
+    data: Optional[Any] = None
 
 
 class ChatRequest(BaseModel):

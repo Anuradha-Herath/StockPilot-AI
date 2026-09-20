@@ -59,6 +59,14 @@ class InventoryLevel(Base, PrimaryKeyMixin, TimestampMixin):
     def is_low_stock(self) -> bool:
         return self.current_stock <= self.reorder_point
 
+    @property
+    def stock_status(self) -> str:
+        if self.current_stock == 0:
+            return "OUT_OF_STOCK"
+        elif self.current_stock <= self.reorder_point:
+            return "LOW_STOCK"
+        return "HEALTHY"
+
     __table_args__ = (
         CheckConstraint("current_stock >= 0", name="chk_inventory_current_stock_non_negative"),
         CheckConstraint("reserved_stock >= 0", name="chk_inventory_reserved_stock_non_negative"),

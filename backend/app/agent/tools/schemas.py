@@ -200,7 +200,8 @@ class CreateDraftPurchaseRequestOutput(BaseModel):
     total_estimated_cost: Decimal
     items: List[PurchaseRequestLineItemSummary]
     created_at: str
-    next_step: str = "Pending Human Approval before Purchase Order generation."
+    proposal_version_hash: Optional[str] = None
+    next_step: str = "Proposal registered in PENDING_APPROVAL state. Awaiting manager approval before PO issuance."
 
 
 # ==========================================

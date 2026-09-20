@@ -240,6 +240,7 @@ def create_stockpilot_workflow(db: AsyncSession, custom_llm: Optional[Any] = Non
                     "arguments": t_args,
                     "success": parsed.get("success", False),
                     "summary": f"Executed {t_name}",
+                    "data": parsed.get("data"),
                 })
                 tool_messages.append(ToolMessage(content=res_str, tool_call_id=t_id))
             except Exception as e:
