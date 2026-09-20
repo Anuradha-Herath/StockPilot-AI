@@ -152,49 +152,167 @@ function AssistantChat() {
     }));
   };
 
-  // Helper to format text with simple markdown styling (bold, bullets, code)
-  const renderFormattedText = (text: string) => {
-    return text.split("\n").map((line, idx) => {
+  // Helper to format text with rich markdown: tables, bold, bullets, numbers, blockquotes, code
+  const renderFormattedText = (text?: string | null) => {
+    if (!text) return null;
+    const lines = String(text).split("\n");
+    const blocks: React.ReactNode[] = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+
+      // 1. Table Detection (Consecutive lines starting & ending with |)
+      if (line.trim().startsWith("|") && line.trim().endsWith("|")) {
+        const tableLines: string[] = [];
+        while (
+          i < lines.length &&
+          lines[i].trim().startsWith("|") &&
+          lines[i].trim().endsWith("|")
+        ) {
+          tableLines.push(lines[i].trim());
+          i++;
+        }
+
+        if (tableLines.length >= 2) {
+          const headerCells = tableLines[0]
+            .split("|")
+            .map((c) => c.trim())
+            .filter((c, idx, arr) => idx !== 0 && idx !== arr.length - 1);
+
+          // Data rows (ignoring separator rows with ---)
+          const dataRows = tableLines.slice(1).filter((r) => !r.includes("---"));
+
+          blocks.push(
+            <div
+              key={`table_${i}`}
+              className="my-3 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/80 shadow-md"
+            >
+              <table className="w-full text-left text-xs divide-y divide-slate-800">
+                <thead className="bg-slate-900/90 text-slate-300 font-semibold uppercase tracking-wider">
+                  <tr>
+                    {headerCells.map((h, hIdx) => (
+                      <th key={hIdx} className="py-2.5 px-3 whitespace-nowrap">
+                        {parseInline(h)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {dataRows.map((row, rIdx) => {
+                    const cells = row
+                      .split("|")
+                      .map((c) => c.trim())
+                      .filter((c, idx, arr) => idx !== 0 && idx !== arr.length - 1);
+                    return (
+                      <tr key={rIdx} className="hover:bg-slate-900/40 transition">
+                        {cells.map((cell, cIdx) => (
+                          <td key={cIdx} className="py-2.5 px-3 text-slate-200">
+                            {parseInline(cell)}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+          continue;
+        }
+      }
+
+      // 2. Headings
       if (line.startsWith("### ")) {
-        return (
-          <h4 key={idx} className="text-sm font-bold text-slate-100 mt-3 mb-1">
-            {line.replace("### ", "")}
+        blocks.push(
+          <h4
+            key={i}
+            className="text-sm font-bold text-slate-100 mt-3 mb-1.5 flex items-center space-x-2"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
+            <span>{line.replace("### ", "")}</span>
           </h4>
         );
+        i++;
+        continue;
       }
       if (line.startsWith("## ")) {
-        return (
-          <h3 key={idx} className="text-base font-bold text-slate-100 mt-3 mb-1">
+        blocks.push(
+          <h3
+            key={i}
+            className="text-base font-bold text-slate-100 mt-3.5 mb-2 border-b border-slate-800/80 pb-1"
+          >
             {line.replace("## ", "")}
           </h3>
         );
+        i++;
+        continue;
       }
+
+      // 3. Bullet list items
       if (line.startsWith("- ") || line.startsWith("* ")) {
-        return (
-          <li key={idx} className="ml-4 list-disc text-slate-300 my-0.5">
+        blocks.push(
+          <li key={i} className="ml-4 list-disc text-slate-300 my-0.5 leading-relaxed">
             {parseInline(line.substring(2))}
           </li>
         );
+        i++;
+        continue;
       }
+
+      // 4. Numbered list items
+      const numMatch = line.match(/^(\d+)\.\s+(.*)$/);
+      if (numMatch) {
+        blocks.push(
+          <div key={i} className="flex items-start space-x-2 my-1.5 ml-1 text-slate-300">
+            <span className="px-1.5 py-0.2 rounded bg-slate-800 text-blue-400 font-mono text-[11px] font-bold shrink-0">
+              {numMatch[1]}
+            </span>
+            <div className="flex-1 leading-relaxed">{parseInline(numMatch[2])}</div>
+          </div>
+        );
+        i++;
+        continue;
+      }
+
+      // 5. Blockquotes
       if (line.startsWith("> ")) {
-        return (
+        blocks.push(
           <blockquote
-            key={idx}
-            className="border-l-2 border-amber-500/60 pl-3 py-1 my-2 bg-amber-500/10 text-amber-300 text-xs rounded-r-lg"
+            key={i}
+            className="border-l-2 border-blue-500/60 pl-3 py-1.5 my-2 bg-blue-500/10 text-blue-300 text-xs rounded-r-lg font-medium"
           >
             {parseInline(line.replace("> ", ""))}
           </blockquote>
         );
+        i++;
+        continue;
       }
+
+      // 6. Horizontal Rules
+      if (line.trim() === "---" || line.trim() === "***") {
+        blocks.push(<hr key={i} className="my-3 border-slate-800" />);
+        i++;
+        continue;
+      }
+
+      // 7. Empty lines
       if (line.trim() === "") {
-        return <div key={idx} className="h-2" />;
+        blocks.push(<div key={i} className="h-1.5" />);
+        i++;
+        continue;
       }
-      return (
-        <p key={idx} className="my-1 text-slate-200">
+
+      // 8. Normal paragraphs
+      blocks.push(
+        <p key={i} className="my-1 text-slate-200 leading-relaxed">
           {parseInline(line)}
         </p>
       );
-    });
+      i++;
+    }
+
+    return blocks;
   };
 
   const parseInline = (text: string) => {

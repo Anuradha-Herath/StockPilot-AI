@@ -54,15 +54,19 @@ export default function InventoryPage() {
   }, []);
 
   // Filter products by search, category, and status
-  const filteredProducts = products.filter((p) => {
+  const filteredProducts = (products || []).filter((p) => {
+    if (!p) return false;
+    const name = (p.name || "").toLowerCase();
+    const sku = (p.sku || "").toLowerCase();
+    const category = (p.category || "").toLowerCase();
+    const q = (searchQuery || "").toLowerCase();
+
     const matchesSearch =
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.category.toLowerCase().includes(searchQuery.toLowerCase());
+      !q || name.includes(q) || sku.includes(q) || category.includes(q);
 
     const matchesCategory =
       selectedCategory === "ALL" ||
-      p.category.toUpperCase() === selectedCategory.toUpperCase();
+      (p.category || "").toUpperCase() === selectedCategory.toUpperCase();
 
     const matchesStatus =
       selectedStatus === "ALL" ||
@@ -73,7 +77,13 @@ export default function InventoryPage() {
 
   const categories = [
     "ALL",
-    ...Array.from(new Set(products.map((p) => p.category))),
+    ...Array.from(
+      new Set(
+        (products || [])
+          .map((p) => p?.category)
+          .filter((c): c is string => Boolean(c))
+      )
+    ),
   ];
 
   const handleOpenAdjust = (p: Product) => {
@@ -107,12 +117,13 @@ export default function InventoryPage() {
     }
   };
 
-  const formatCurrency = (val: number | string) => {
+  const formatCurrency = (val: number | string | null | undefined) => {
+    if (val === null || val === undefined) return "$0.00";
     const num = typeof val === "string" ? parseFloat(val) : val;
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
-    }).format(num || 0);
+    }).format(isNaN(num) ? 0 : num);
   };
 
   return (
@@ -347,13 +358,13 @@ export default function InventoryPage() {
               <p className="text-slate-400">
                 Current Stock:{" "}
                 <span className="font-bold text-slate-100">
-                  {selectedProduct?.inventory?.current_stock} {selectedProduct?.unit}
+                  {selectedProduct?.inventory?.current_stock ?? 0} {selectedProduct?.unit || "units"}
                 </span>
               </p>
               <p className="text-slate-400">
                 Safety Reorder Point:{" "}
                 <span className="font-bold text-slate-100">
-                  {selectedProduct?.inventory?.reorder_point} {selectedProduct?.unit}
+                  {selectedProduct?.inventory?.reorder_point ?? 0} {selectedProduct?.unit || "units"}
                 </span>
               </p>
             </div>

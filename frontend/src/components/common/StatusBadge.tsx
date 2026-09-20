@@ -41,8 +41,9 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, type = "stock"
     }
   };
 
-  const formatText = (text: string) => {
-    return text.replace(/_/g, " ");
+  const formatText = (text?: string | null) => {
+    if (!text) return "UNKNOWN";
+    return String(text).replace(/_/g, " ");
   };
 
   return (

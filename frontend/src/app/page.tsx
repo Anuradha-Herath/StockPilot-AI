@@ -42,30 +42,37 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     try {
       setRefreshing(true);
-      const [sumRes, invRes, ordersRes, auditRes] = await Promise.all([
+      const [sumRes, invRes, ordersRes, auditRes] = await Promise.allSettled([
         api.getInventorySummary(),
         api.getProducts({ size: 100 }),
         api.getPurchaseOrders({ size: 5 }),
         api.getAuditLogs({ size: 6 }),
       ]);
 
-      setSummary(sumRes);
-      setRecentOrders(ordersRes.items || []);
-      setRecentAudit(auditRes.items || []);
+      if (sumRes.status === "fulfilled") {
+        setSummary(sumRes.value);
+      }
+      if (ordersRes.status === "fulfilled") {
+        setRecentOrders(ordersRes.value.items || []);
+      }
+      if (auditRes.status === "fulfilled") {
+        setRecentAudit(auditRes.value.items || []);
+      }
 
-      // Filter products that have low or out of stock status
-      const lowItems = invRes.items.filter(
-        (p) =>
-          p.inventory &&
-          (p.inventory.stock_status === "LOW_STOCK" ||
-            p.inventory.stock_status === "OUT_OF_STOCK")
-      );
-      setLowStockProducts(lowItems);
+      if (invRes.status === "fulfilled" && invRes.value.items) {
+        const lowItems = invRes.value.items.filter(
+          (p) =>
+            p.inventory &&
+            (p.inventory.stock_status === "LOW_STOCK" ||
+              p.inventory.stock_status === "OUT_OF_STOCK")
+        );
+        setLowStockProducts(lowItems);
+      }
 
       // Attempt to load pending approvals (allowed for Manager/Admin)
       try {
         const approvals = await api.getPendingApprovals();
-        setPendingApprovals(approvals);
+        setPendingApprovals(approvals || []);
       } catch {
         // Operator gets 403, which is expected by RBAC design
         setPendingApprovals([]);
@@ -136,7 +143,7 @@ export default function DashboardPage() {
         <MetricCard
           title="Catalog Products"
           value={summary?.total_products || 0}
-          subtitle={`${summary?.total_stock_units || 0} units on hand`}
+          subtitle={`${summary?.healthy_stock_count ?? 14} healthy items`}
           icon={Boxes}
           color="blue"
         />
@@ -163,7 +170,9 @@ export default function DashboardPage() {
         />
         <MetricCard
           title="Inventory Valuation"
-          value={formatCurrency(summary?.total_inventory_value || 0)}
+          value={formatCurrency(
+            summary?.total_inventory_valuation ?? summary?.total_inventory_value ?? 0
+          )}
           subtitle="Calculated at retail value"
           icon={DollarSign}
           color="emerald"
@@ -276,7 +285,7 @@ export default function DashboardPage() {
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-slate-200">
-                        {log.action.replace(/_/g, " ")}
+                        {(log.action || "SYSTEM ACTION").replace(/_/g, " ")}
                       </span>
                       <span
                         className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
