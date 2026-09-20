@@ -23,7 +23,7 @@ from app.services.inventory_service import InventoryService
 from app.services.product_service import ProductService
 
 
-@safe_tool_executor("search_products")
+@safe_tool_executor("search_products", max_retries=2, timeout_seconds=8.0)
 async def search_products(
     db: AsyncSession,
     args: SearchProductsInput,
@@ -63,7 +63,7 @@ async def search_products(
     )
 
 
-@safe_tool_executor("get_inventory")
+@safe_tool_executor("get_inventory", max_retries=2, timeout_seconds=8.0)
 async def get_inventory(
     db: AsyncSession,
     args: GetInventoryInput,
@@ -114,7 +114,7 @@ async def get_inventory(
     )
 
 
-@safe_tool_executor("find_low_stock_products")
+@safe_tool_executor("find_low_stock_products", max_retries=2, timeout_seconds=8.0)
 async def find_low_stock_products(
     db: AsyncSession,
     args: FindLowStockProductsInput,
@@ -154,7 +154,7 @@ async def find_low_stock_products(
     )
 
 
-@safe_tool_executor("get_supplier_options")
+@safe_tool_executor("get_supplier_options", max_retries=2, timeout_seconds=8.0)
 async def get_supplier_options(
     db: AsyncSession,
     args: GetSupplierOptionsInput,
@@ -190,7 +190,7 @@ async def get_supplier_options(
     )
 
 
-@safe_tool_executor("calculate_reorder_recommendation")
+@safe_tool_executor("calculate_reorder_recommendation", max_retries=1, timeout_seconds=8.0)
 async def calculate_reorder_recommendation(
     db: AsyncSession,
     args: CalculateReorderRecommendationInput,

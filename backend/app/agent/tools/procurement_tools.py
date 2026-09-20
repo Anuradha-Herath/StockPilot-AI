@@ -14,7 +14,7 @@ from app.schemas.purchase_request import PurchaseRequestItemBase
 from app.services.purchase_request_service import PurchaseRequestService
 
 
-@safe_tool_executor("create_draft_purchase_request")
+@safe_tool_executor("create_draft_purchase_request", max_retries=0, timeout_seconds=10.0)
 async def create_draft_purchase_request(
     db: AsyncSession,
     args: CreateDraftPurchaseRequestInput,
@@ -73,7 +73,7 @@ async def create_draft_purchase_request(
     )
 
 
-@safe_tool_executor("get_purchase_request_status")
+@safe_tool_executor("get_purchase_request_status", max_retries=2, timeout_seconds=8.0)
 async def get_purchase_request_status(
     db: AsyncSession,
     args: GetPurchaseRequestStatusInput,

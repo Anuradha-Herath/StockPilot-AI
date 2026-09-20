@@ -4,11 +4,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.api_router import api_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
+from app.core.logging import RequestCorrelationMiddleware, setup_logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
+    setup_logging()
     yield
     # Shutdown logic
 
@@ -23,6 +25,9 @@ def create_application() -> FastAPI:
         openapi_url="/openapi.json",
         lifespan=lifespan,
     )
+
+    # Add Request Correlation and Access Logging Middleware
+    app.add_middleware(RequestCorrelationMiddleware)
 
     # Configure CORS
     app.add_middleware(
