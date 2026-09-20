@@ -6,6 +6,11 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.config import settings
+
+# Force testing environment for checkpointer and mocks
+settings.ENVIRONMENT = "testing"
+
 from app.core.database import get_db
 from app.db.base import Base
 from app.db.models import (

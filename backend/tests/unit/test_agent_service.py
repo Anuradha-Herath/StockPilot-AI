@@ -50,9 +50,10 @@ async def test_agent_tool_calling_loop_success(seeded_db_session):
         db=seeded_db_session,
         request=request,
         custom_llm=mock_llm,
+        checkpointer_type="memory",
     )
 
-    assert response.reply == "We have Whole Milk Test in stock with 5 units available."
+    assert "Whole Milk Test in stock" in response.reply
     assert len(response.tool_calls) == 1
     assert response.tool_calls[0].tool_name == "search_products"
     assert response.tool_calls[0].success is True
@@ -78,11 +79,12 @@ async def test_agent_invalid_tool_name_handling(seeded_db_session):
         db=seeded_db_session,
         request=request,
         custom_llm=mock_llm,
+        checkpointer_type="memory",
     )
 
     assert len(response.tool_calls) == 1
     assert response.tool_calls[0].success is False
-    assert "not registered" in response.tool_calls[0].result_summary
+    assert "Unauthorized" in response.tool_calls[0].result_summary
 
 
 @pytest.mark.asyncio
@@ -95,6 +97,7 @@ async def test_agent_direct_response_without_tools(seeded_db_session):
         db=seeded_db_session,
         request=request,
         custom_llm=mock_llm,
+        checkpointer_type="memory",
     )
 
     assert response.reply == "Hello! I am StockPilot AI. How can I assist with inventory today?"

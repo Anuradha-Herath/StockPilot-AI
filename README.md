@@ -2,7 +2,7 @@
 
 > **AI-powered Inventory & Procurement Workflow Automation with Human-in-the-Loop Safeguards**
 
-StockPilot AI is an autonomous yet safely constrained inventory management copilot built with **FastAPI**, **SQLAlchemy 2.0 Async**, **PostgreSQL**, **Groq LLM (LLaMA 3.3 / GPT-OSS)**, **LangChain / LangGraph**, and **Next.js**. It automates stock audits, supplier selection, and purchase order drafting while ensuring all financial mutations remain strictly gated by human approval.
+StockPilot AI is an autonomous yet safely constrained inventory management copilot built with **FastAPI**, **SQLAlchemy 2.0 Async**, **PostgreSQL**, **Groq LLM (LLaMA 3.3 / GPT-OSS)**, **LangGraph State Machine**, and **Next.js**. It automates stock audits, supplier selection, and purchase order drafting while ensuring all financial mutations remain strictly gated by human approval.
 
 ---
 
@@ -13,39 +13,33 @@ For the complete technical specification, data dictionary, and security model, s
 
 ### Key Design Highlights:
 - **Modular Monolith:** Single unified backend service with clear separation between API routes, Pydantic schemas, database models, business services, and agent tool execution.
-- **Async Database Layer:** Asynchronous SQLAlchemy 2.0 with connection pooling using `asyncpg` for high-throughput I/O.
+- **LangGraph State Machine:** Explicit `StateGraph` workflow (`intent_analyzer` -> `agent_reasoner` -> `tool_validator` -> `tool_executor` -> `response_formatter`) with loop detection and conditional routing.
+- **Durable Checkpointing:** Session persistence with PostgreSQL (`AsyncPostgresSaver`) allowing multi-turn memory and thread state retrieval.
 - **Deterministic Tool Calling:** The LLM does not generate raw SQL or hallucinate inventory balances. It invokes typed, validated Python tools and bases responses strictly on returned database rows.
-- **Provider Abstraction:** Dynamic adapter supporting **Groq Cloud API** (`openai/gpt-oss-120b`, `llama-3.3-70b-versatile`) and **Ollama Local** (`llama3.1:8b`).
 - **Strict Financial Boundaries:** Creating a purchase request leaves it in `DRAFT` status. No financial purchase orders are issued without explicit human approval.
 
 ---
 
-## 🤖 Phase 3: Conversational Copilot & Tool Calling Flow
+## 🤖 LangGraph Agent State Machine
 
 ```
 [ User Prompt ]
       │
       ▼
-[ FastAPI /api/v1/chat ]
+[ intent_analyzer ] ─── extracts intent (e.g. LOW_STOCK_AUDIT, DRAFT_PURCHASE_REQUEST)
       │
       ▼
-[ AgentService Reasoning Loop ]
-      │
-      ├──> [ LLM (Groq API) with Bound Tools ]
-      │         │
-      │         ├── (Requests Tool Call: tool_name, args)
-      │         ▼
-      ├──> [ Tool Execution Layer ] (Type-checked via Pydantic)
-      │         │
-      │         ├── Runs query against PostgreSQL (AsyncSession)
-      │         ▼
-      ├──> [ ToolMessage Result Envelope ] (JSON data)
-      │         │
-      │         ▼
-      └──> [ LLM Formulates Grounded Response ]
-                │
-                ▼
-[ Final Natural Language Reply + Tool Execution Logs ]
+[ agent_reasoner ] <───┐ (Iterative tool-calling loop)
+      │                │
+      ├────────────────┼────────────────────────┐
+      │ (Tool Calls)   │                        │ (Direct Reply / Finished)
+      ▼                │                        ▼
+[ tool_validator ]     │               [ response_formatter ]
+      │                │                        │
+      ├── (Valid)      │                        ▼
+      ▼                │                   [ Final Reply ]
+[ tool_executor ] ─────┘
+      │ (Runs on PostgreSQL)
 ```
 
 ---
@@ -80,39 +74,11 @@ alembic upgrade head
 # 3. Seed supermarket database
 python scripts/seed_data.py
 
-# 4. Run backend tests (43 passing tests)
+# 4. Run backend tests (47 passing tests)
 pytest -v
 
 # 5. Start FastAPI Server
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
----
-
-## 🧪 Live Manual Test Suite Examples
-
-### 1. Low Stock Inquiry
-```powershell
-$body = @{ message = "Show me products that are running low in the dairy category." } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/chat" -Method Post -Body $body -ContentType "application/json" | ConvertTo-Json -Depth 5
-```
-
-### 2. Supplier Lookup
-```powershell
-$body = @{ message = "Which suppliers can provide whole milk?" } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/chat" -Method Post -Body $body -ContentType "application/json" | ConvertTo-Json -Depth 5
-```
-
-### 3. Draft Purchase Request Creation
-```powershell
-$body = @{ message = "Prepare a draft purchase request for low-stock whole milk with 50 units." } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/chat" -Method Post -Body $body -ContentType "application/json" | ConvertTo-Json -Depth 5
-```
-
-### 4. Purchase Request Status Check
-```powershell
-$body = @{ message = "What is the status of purchase request 1?" } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/chat" -Method Post -Body $body -ContentType "application/json" | ConvertTo-Json -Depth 5
 ```
 
 ---
@@ -123,6 +89,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/chat" -Method Post -Body $b
 - [x] **Phase 1: Database & FastAPI Foundation**
 - [x] **Phase 2: Inventory Business Logic & Agent Tools Layer**
 - [x] **Phase 3: LLM Integration & Conversational Tool Calling**
-- [ ] **Phase 4: Human-in-the-Loop (HITL) Workflow & LangGraph State Machine** (LangGraph Checkpoints, interrupt() nodes, PO approval state machine)
-- [ ] **Phase 5: Next.js Frontend Dashboard & Conversational Copilot UI**
-- [ ] **Phase 6: End-to-End Integration, Dockerization & Portfolio Polish**
+- [x] **Phase 4: LangGraph Workflow Orchestration & State Checkpointing**
+- [ ] **Phase 5: Human-in-the-Loop (HITL) Approval Workflow & PO Execution** (LangGraph interrupt() breakpoints, manager review API, PO state machine)
+- [ ] **Phase 6: Next.js Frontend Dashboard & Conversational Copilot UI**
+- [ ] **Phase 7: End-to-End Integration, Dockerization & Portfolio Polish**
